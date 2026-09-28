@@ -199,7 +199,7 @@ try { userData = JSON.parse(localStorage.getItem("9jaCashUser")); } catch (e) { 
 
 // ---------- Cloudinary Unsigned Setup ----------
 const CLOUDINARY_CLOUD_NAME = "nhm2xhew";       // Replace with your Cloud Name
-const CLOUDINARY_UPLOAD_PRESET = "video_challenge"; // Replace with your Unsigned Preset Name
+const CLOUDINARY_UPLOAD_PRESET = "video_challenge2"; // Replace with your Unsigned Preset Name
 
 const MAX_MB = 50;
 const ROOT = 'videoChallenge';
@@ -298,7 +298,7 @@ function uploadToCloudinary(file, onProgress) {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-    formData.append("folder", "video_challenge");
+    formData.append("folder", "video_challenge2");
 
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/video/upload`);
