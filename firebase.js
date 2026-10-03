@@ -2,14 +2,15 @@
 // Initialize Firebase and export _9jaCash global for all pages
 
 const firebaseConfig = {
-  apiKey: "AIzaSyBiE_ulylBuXSrnNnoSEDHejvL5g8NTOSw",
-  authDomain: "nexus-insights-346a7.firebaseapp.com",
-  projectId: "nexus-insights-346a7",
-  storageBucket: "nexus-insights-346a7.firebasestorage.app",
-  messagingSenderId: "640016887422",
-  appId: "1:640016887422:web:cc1aa75c54871dbaaff22f",
-  measurementId: "G-K78901TQQG"
+  apiKey: "AIzaSyCvqEujlcG9mKrZ1UcXHjAcMtVaT82sP-U",
+  authDomain: "nexus-insights-2a945.firebaseapp.com",
+  projectId: "nexus-insights-2a945",
+  storageBucket: "nexus-insights-2a945.firebasestorage.app",
+  messagingSenderId: "1052519963365",
+  appId: "1:1052519963365:web:9239977bed98e25e99920c",
+  measurementId: "G-CFPR9MM61N"
 };
+
 
 
 // Initialize Firebase
