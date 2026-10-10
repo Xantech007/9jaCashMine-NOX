@@ -71,6 +71,18 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:#0f172a;color:#f8fafc
 .status-value.red{color:#ef4444;}
 .status-value.accent{color:#6366f1;}
 
+/* Timeline */
+.timeline{display:flex;flex-direction:column;gap:0;margin-bottom:24px;text-align:left;}
+.timeline-item{display:flex;gap:16px;position:relative;}
+.timeline-item:not(:last-child)::before{content:'';position:absolute;left:15px;top:36px;width:2px;height:calc(100% - 20px);background:#334155;transition:all 0.3s;}
+.timeline-dot{width:32px;height:32px;border-radius:50%;background:#334155;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:12px;flex-shrink:0;transition:all 0.3s;}
+.timeline-dot.active{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;box-shadow:0 4px 12px rgba(99,102,241,0.3);}
+.timeline-dot.done{background:#10b981;color:#fff;}
+.timeline-dot.failed{background:#ef4444;color:#fff;}
+.timeline-content{flex:1;padding-bottom:24px;}
+.timeline-title{font-size:14px;font-weight:700;color:#f8fafc;margin-bottom:4px;}
+.timeline-desc{font-size:12px;color:#64748b;font-weight:500;}
+
 .failed-box{background:linear-gradient(135deg,rgba(239,68,68,0.08),rgba(245,158,11,0.05));border:1px solid rgba(239,68,68,0.2);border-radius:16px;padding:16px;margin-bottom:20px;display:none;align-items:flex-start;gap:12px;text-align:left;}
 .failed-box.show{display:flex;animation:slideUp 0.5s ease;}
 .failed-box i{color:#ef4444;font-size:20px;margin-top:2px;flex-shrink:0;}
@@ -141,11 +153,36 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:#0f172a;color:#f8fafc
     </div>
   </div>
 
+  <!-- Timeline -->
+  <div class="timeline anim d4" id="timelineBox">
+    <div class="timeline-item">
+      <div class="timeline-dot active" id="dot1"><i class="fa-solid fa-hourglass-half"></i></div>
+      <div class="timeline-content">
+        <div class="timeline-title" id="step1Title">Payment Verification</div>
+        <div class="timeline-desc" id="step1Desc">Confirming your deposit transaction</div>
+      </div>
+    </div>
+    <div class="timeline-item">
+      <div class="timeline-dot" id="dot2"><i class="fa-solid fa-rotate-left"></i></div>
+      <div class="timeline-content">
+        <div class="timeline-title" id="step2Title">Refund Processing</div>
+        <div class="timeline-desc" id="step2Desc">Wallet balance and benefits release</div>
+      </div>
+    </div>
+    <div class="timeline-item">
+      <div class="timeline-dot" id="dot3"><i class="fa-solid fa-check"></i></div>
+      <div class="timeline-content">
+        <div class="timeline-title" id="step3Title">Verification Complete</div>
+        <div class="timeline-desc" id="step3Desc">Your account is fully upgraded</div>
+      </div>
+    </div>
+  </div>
+
   <!-- Failed Message Box -->
   <div class="failed-box anim d4" id="failedBox">
     <i class="fa-solid fa-circle-exclamation"></i>
     <div class="failed-text">
-      <strong>Payment Declined.</strong> <span id="declineReason">Admin could not confirm your transfer. Please check bank receipt details and resubmit.</span>
+      <strong>Payment could not be verified.</strong> <span id="declineReason">Our system was unable to confirm your deposit. This may be due to network delays, incorrect transfer details, or the transaction not yet reflecting. Please retry your payment or contact support.</span>
     </div>
   </div>
 
@@ -155,7 +192,7 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:#0f172a;color:#f8fafc
   </button>
 
   <button class="retry-btn anim d5 hidden" id="retryBtn" onclick="window.location.href='upgrade.html'">
-    <i class="fa-solid fa-rotate-right"></i> Retry Submission
+    <i class="fa-solid fa-rotate-right"></i> Retry Submission / Payment
   </button>
 
   <a class="support-link anim d5" id="supportLink" href="javascript:void(0)" onclick="openCustomerCareModal()">
@@ -169,19 +206,15 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:#0f172a;color:#f8fafc
 
 <script>
   let userData = null;
+  let failedTimeout = null;
+  let firestoreListenerActive = false;
+
   function formatExternalLink(url, defaultUrl) {
     if (!url || typeof url !== 'string' || !url.trim()) return defaultUrl;
-    let clean = url.trim();
-    clean = clean.replace(/^\/+/, '');
-    if (/^(https?:\/\/|tg:\/\/|whatsapp:\/\/)/i.test(clean)) {
-      return clean;
-    }
-    if (/^(t\.me|wa\.me|whatsapp\.com|telegram\.me)/i.test(clean)) {
-      return 'https://' + clean;
-    }
-    if (/^\+?\d+$/.test(clean)) {
-      return 'https://wa.me/' + clean.replace(/^\+/, '');
-    }
+    let clean = url.trim().replace(/^\/+/, '');
+    if (/^(https?:\/\/|tg:\/\/|whatsapp:\/\/)/i.test(clean)) return clean;
+    if (/^(t\.me|wa\.me|whatsapp\.com|telegram\.me)/i.test(clean)) return 'https://' + clean;
+    if (/^\+?\d+$/.test(clean)) return 'https://wa.me/' + clean.replace(/^\+/, '');
     if (/^@?[a-zA-Z0-9_]+$/.test(clean)) {
       let username = clean.startsWith('@') ? clean.slice(1) : clean;
       return 'https://t.me/' + username;
@@ -223,27 +256,31 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:#0f172a;color:#f8fafc
   }
 
   function startFirestoreStatusListener() {
-    if (!userData || (!userData.phone && !userData.email)) {
-      console.warn("Cannot track payment status: no user identifier found.");
-      return;
-    }
-
-    // Ensure Firebase is ready
     if (!window._9jaCash || !window._9jaCash.db) {
-      console.warn("Firebase db not ready yet. Retrying in 1 second...");
       setTimeout(startFirestoreStatusListener, 1000);
       return;
     }
 
+    if (!userData || (!userData.phone && !userData.email)) {
+      failedTimeout = setTimeout(function() {
+        switchToFailed("Admin could not confirm your transfer within the time limit. Please check bank receipt details and resubmit.");
+      }, 10000);
+      return;
+    }
+
     const db = window._9jaCash.db;
-    
-    // Query Firestore payment requests collection matching user phone or email
     let query = db.collection('payment_requests');
     if (userData.phone) {
       query = query.where('phone', '==', userData.phone);
     } else {
       query = query.where('email', '==', userData.email);
     }
+
+    failedTimeout = setTimeout(function() {
+      if (!firestoreListenerActive) {
+        switchToFailed("Admin confirmation pending timeout. Please check your bank receipt details and retry.");
+      }
+    }, 10000);
 
     query.orderBy('createdAt', 'desc').limit(1).onSnapshot(function(snapshot) {
       if (snapshot.empty) return;
@@ -252,8 +289,12 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:#0f172a;color:#f8fafc
       const status = latestDoc.status;
 
       if (status === "approved" || status === "confirmed") {
+        firestoreListenerActive = true;
+        if (failedTimeout) clearTimeout(failedTimeout);
         applyApprovedRequest();
       } else if (status === "rejected" || status === "declined") {
+        firestoreListenerActive = true;
+        if (failedTimeout) clearTimeout(failedTimeout);
         switchToFailed(latestDoc.admin_note || latestDoc.reason || "Admin could not confirm your transfer. Please check bank receipt details and resubmit.");
       }
     }, function(error) {
@@ -269,7 +310,6 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:#0f172a;color:#f8fafc
 
     const db = window._9jaCash.db;
     let query = db.collection('users');
-    
     let userQuery = userData.phone ? query.where('phone', '==', userData.phone) : query.where('email', '==', userData.email);
 
     userQuery.limit(1).get()
@@ -288,24 +328,41 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:#0f172a;color:#f8fafc
   }
 
   function switchToFailed(reason) {
+    if (failedTimeout) clearTimeout(failedTimeout);
+
     const ring = document.getElementById("processRing");
     const icon = document.getElementById("processIcon");
     ring.classList.add("failed");
     icon.className = "fa-solid fa-circle-xmark";
     
-    document.getElementById("mainTitle").textContent = "Payment Declined";
+    document.getElementById("mainTitle").textContent = "Payment Verification Failed";
     document.getElementById("mainSub").textContent = "We could not verify your purchase. Please view details below.";
     
     document.getElementById("statusIconBox").classList.add("failed");
     document.getElementById("statusIcon").className = "fa-solid fa-circle-xmark";
-    document.getElementById("statusTitle").textContent = "Transaction Declined";
-    document.getElementById("statusSub").textContent = "Verification unsuccessful";
+    document.getElementById("statusTitle").textContent = "Payment Not Confirmed";
+    document.getElementById("statusSub").textContent = "Transaction verification unsuccessful";
     
     const statusVal = document.getElementById("statusValue");
     statusVal.className = "status-value red";
     statusVal.style.color = "#ef4444";
-    statusVal.innerHTML = '<i class="fa-solid fa-circle-xmark" style="font-size:10px;margin-right:6px;"></i>Declined';
+    statusVal.innerHTML = '<i class="fa-solid fa-circle-xmark" style="font-size:10px;margin-right:6px;"></i>Failed';
     
+    document.getElementById("dot1").className = "timeline-dot failed";
+    document.getElementById("dot1").innerHTML = '<i class="fa-solid fa-xmark"></i>';
+    document.getElementById("step1Title").textContent = "Payment Not Found";
+    document.getElementById("step1Desc").textContent = "We could not verify your deposit transaction";
+    
+    document.getElementById("dot2").className = "timeline-dot";
+    document.getElementById("dot2").innerHTML = '<i class="fa-solid fa-ban"></i>';
+    document.getElementById("step2Title").textContent = "Refund Cancelled";
+    document.getElementById("step2Desc").textContent = "No deposit confirmed — refund not applicable";
+    
+    document.getElementById("dot3").className = "timeline-dot";
+    document.getElementById("dot3").innerHTML = '<i class="fa-solid fa-lock"></i>';
+    document.getElementById("step3Title").textContent = "Account Pending";
+    document.getElementById("step3Desc").textContent = "Complete verification to unlock full features";
+
     document.getElementById("declineReason").textContent = reason;
     document.getElementById("failedBox").classList.add("show");
     document.getElementById("retryBtn").classList.remove("hidden");
@@ -314,86 +371,71 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:#0f172a;color:#f8fafc
   window.addEventListener("DOMContentLoaded", function() {
     loadLocalInfo();
     startFirestoreStatusListener();
+    loadSocialHandles();
   });
 
   function openCustomerCareModal() {
     const modal = document.getElementById("customerCareModal");
-    if (modal) modal.style.display = "flex";
+    if (modal) {
+      updateCustomerCareLinks();
+      modal.classList.add('show');
+    }
   }
-  function closeCustomerCareModal() {
+  
+  function closeCustomerCareModal(event) {
+    if (event && event.target !== event.currentTarget) return;
     const modal = document.getElementById("customerCareModal");
-    if (modal) modal.style.display = "none";
-  }
-
-  function loadCustomerCareLinks() {
-    const whatsappBtn = document.getElementById('modalWhatsappBtn');
-    const telegramBtn = document.getElementById('modalTelegramBtn');
-    
-    let defaultWaActive = true;
-    let defaultTgActive = true;
-    let defaultWaUrl = "https://wa.me/2349000000000";
-    let defaultTgUrl = "https://t.me/apex_customercare";
-
-    function applyLinks(waActive, tgActive, waUrl, tgUrl) {
-      if (whatsappBtn) {
-        whatsappBtn.href = waUrl || 'javascript:void(0)';
-        whatsappBtn.style.display = waActive ? 'flex' : 'none';
-      }
-      if (telegramBtn) {
-        telegramBtn.href = tgUrl || 'javascript:void(0)';
-        telegramBtn.style.display = tgActive ? 'flex' : 'none';
-      }
-      if (!waActive && !tgActive) {
-        if (telegramBtn) {
-          telegramBtn.style.display = 'flex';
-          telegramBtn.href = 'javascript:void(0)';
-          const tEl = telegramBtn.querySelector('.support-title');
-          if (tEl) tEl.textContent = 'Support Offline';
-          const dEl = telegramBtn.querySelector('.support-desc');
-          if (dEl) dEl.textContent = 'Contact your Referrer';
-        }
-      }
-    }
-
-    function resolveAndApply() {
-      if (userData && userData.hasJuniorLinks) {
-        const hasTg = userData.juniorTelegram && userData.juniorTelegram.trim() !== '';
-        const hasWa = userData.juniorWhatsapp && userData.juniorWhatsapp.trim() !== '';
-
-        const tgUrl = hasTg ? userData.juniorTelegram.trim() : '';
-        const tgActive = hasTg ? (userData.juniorTelegramActive === 1) : false;
-
-        const waUrl = hasWa ? userData.juniorWhatsapp.trim() : '';
-        const waActive = hasWa ? (userData.juniorWhatsappActive === 1) : false;
-
-        applyLinks(waActive, tgActive, formatExternalLink(waUrl, ''), formatExternalLink(tgUrl, ''));
-      } else {
-        applyLinks(defaultWaActive, defaultTgActive, formatExternalLink(defaultWaUrl, defaultWaUrl), formatExternalLink(defaultTgUrl, defaultTgUrl));
-      }
-    }
-
-    // Load global settings from Firestore if available
-    if (window._9jaCash && window._9jaCash.db) {
-      window._9jaCash.db.collection('settings').doc('general').get()
-        .then(function(doc) {
-          if (doc.exists) {
-            const s = doc.data() || {};
-            defaultWaActive = s.whatsappLinkActive !== false;
-            defaultTgActive = s.telegramSupportLinkActive !== false;
-            defaultWaUrl = s.whatsappLink || "https://wa.me/2349000000000";
-            defaultTgUrl = s.telegramSupportLink || "https://t.me/apex_customercare";
-          }
-          resolveAndApply();
-        })
-        .catch(function(err) {
-          console.warn("Error loading settings from Firestore:", err);
-          resolveAndApply();
-        });
-    } else {
-      resolveAndApply();
+    if (modal) {
+      modal.classList.remove('show');
     }
   }
-  setTimeout(loadCustomerCareLinks, 800);
+
+  // Social handles loading logic matched from reference script (9).js
+  let socialHandles = { telegram: "", whatsapp: "" };
+  try {
+    const cached = JSON.parse(localStorage.getItem("9jaCashSocialHandles"));
+    if (cached) socialHandles = { telegram: cached.telegram || "", whatsapp: cached.whatsapp || "" };
+  } catch (e) { }
+
+  function buildTelegramUrl(handle) {
+    if (!handle) return "";
+    return formatExternalLink(String(handle), "");
+  }
+
+  function buildWhatsappUrl(handle) {
+    if (!handle) return "";
+    const clean = String(handle).trim();
+    if (/^(https?:\/\/|whatsapp:\/\/)/i.test(clean)) return clean;
+    const digits = clean.replace(/[^\d]/g, "");
+    return digits ? "https://wa.me/" + digits : "";
+  }
+
+  function updateCustomerCareLinks() {
+    const tg = document.getElementById("modalTelegramBtn");
+    const wa = document.getElementById("modalWhatsappBtn");
+    const tgUrl = buildTelegramUrl(socialHandles.telegram);
+    const waUrl = buildWhatsappUrl(socialHandles.whatsapp);
+    if (tg && tgUrl) tg.href = tgUrl;
+    if (wa && waUrl) {
+      wa.href = waUrl + (waUrl.indexOf("?") === -1 ? "?text=" + encodeURIComponent("Hello 9jaCash Support, I need assistance") : "");
+    }
+  }
+
+  function loadSocialHandles() {
+    if (!window._9jaCash || !window._9jaCash.db) return;
+    window._9jaCash.db.collection("settings").doc("redirects").onSnapshot(function (doc) {
+      if (!doc.exists) return;
+      const d = doc.data() || {};
+      socialHandles = {
+        telegram: d.failedSupportHandle || "",
+        whatsapp: d.whatsappHandle || ""
+      };
+      try { localStorage.setItem("9jaCashSocialHandles", JSON.stringify(socialHandles)); } catch (e) { }
+      updateCustomerCareLinks();
+    }, function (err) { });
+  }
+
+  setTimeout(loadSocialHandles, 800);
 </script>
 
 <!-- CUSTOMER CARE SELECTION MODAL -->
